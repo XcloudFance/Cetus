@@ -20,26 +20,30 @@ document = content
 class NormalChunks:
     def __init__(self):
         self.grammar = r"""
-
-        NP: {<DT>?<JJ|VBN|VBG>+<NN.*>+}
+        NP: {<DT>?<JJ|VBN|VBG>+<NN|NNS>+}
 
         PP: {<IN><NP>}   
         AVP: {<RB.*><VB.*>}    
 
         TV: {<TO|AVP><VB.*>}            
         VNP: {<VB.*><NP|PP|CLAUSE>+$} 
-        VP: {<TV|VB.*><NP>}
-        AJJ: {<RB.*><JJ>}
+        VP: {<TV|VB.*|AVP><NP>}
+        AJJ: {<RB.*>+<JJ>}
         JJIN: {<JJ>.*<IN>}
 
         RBIN: {<RB.*><IN>}
-        VIN: {<IN>+<NN|NNS|VB.*>.*<IN|TO>(<DT>?<NN.*>)*}
+        DTNN: {<DT>?<NN|NNS>}
+
+        VIN: {< DTNN|VB.*|NP>+.*<IN|TO>(<DT>?<NN|NNS|NP>)*}
+        
         RBINNP: {<RBIN><NN.*|NP>}
         """
+        self.easywords = ['too','so','already','very','not','yet']
+        self.be = [' is ',' are ',' am ',' was ',' were ',' being ']
         
     def getChunks(self,parsedTree):
         res = []
-        donotShow = ['TV']
+        donotShow = ['TV','DTNN']
         for i in parsedTree:
             if type(i) != tuple:
                 if i.label() in donotShow:
@@ -76,15 +80,35 @@ class NormalChunks:
 
 
     def normalChunks(self,sentence: str,row = 0):
-        try:
-            sentenceTree = self.preprocess(sentence)[row]
+        #try:
+            if sentence.strip() == '':
+                return [],()
+            
+            sentence = sentence.replace('\n',' ')
 
+            for i in self.easywords:
+                sentence = sentence.replace(i,'')
+            while sentence.find('  ')!=-1:
+                sentence = sentence.replace('  ',' ')
+            for i in self.be:
+                sentence = sentence.replace(i,' be ')
+            
+            sentenceTree = self.preprocess(sentence)[row]
+            
 
             cp = nltk.RegexpParser(self.grammar,loop=2)
-            res = cp.parse(sentenceTree)
-            return self.getChunks(res)
-        except:
-            return []
+            res = self.getChunks(cp.parse(sentenceTree))
+            pos = [] #格式： [(0,1),(3,5)]
+            for i in res:   
+                start = sentence.find(i[1])
+                if start == -1:
+                    print(sentence)
+                end = start + len(i[1]) - 1
+                pos.append((start,end))
+
+            return res,pos
+        #except:
+        #    return []
 
 
 class extractFromFiles:
@@ -96,6 +120,7 @@ class extractFromFiles:
             for row in reader:
                 self.phraseTable.append(row)
             self.wnl = WordNetLemmatizer()
+
     def analysisSentence(self,sentence):
         for i in self.phraseTable:
             con = i[0].replace("...",".*")
@@ -117,10 +142,17 @@ class extractFromFiles:
 
 eff1 = extractFromFiles()
 normal = NormalChunks()
-out = []
+out = ""
 for i in content.split('.'):
-    res = normal.normalChunks(i)
+    res,pos = normal.normalChunks(i)
     if res != []:
-        out.append(res)
+        for j in res:
+            out += j[0] +" " + j[1] +"  "
+        out += ' ' + str(pos) 
+        out+="\n"
     
-print(out)
+
+
+f = open("report.txt",'w')
+f.write(out)
+f.close()
